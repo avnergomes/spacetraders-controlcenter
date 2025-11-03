@@ -1,4 +1,5 @@
 import os, json, time, re
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
@@ -28,6 +29,51 @@ def parse_cooldown_seconds(err_text: str, fallback: int = 60) -> int:
 def toast_ok(msg: str): st.toast(msg, icon="✅")
 def toast_warn(msg: str): st.toast(msg, icon="⚠️")
 def toast_err(msg: str): st.toast(msg, icon="❌")
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
 
 # ================================
 # HTTP client (auto {} for POST)
@@ -127,6 +173,8 @@ def api_nav_status(token, ship): return STClient(token).get(f"/my/ships/{ship}/n
 def api_extract(token, ship, survey=None):
     body = {"survey": survey} if survey else {}
     return STClient(token).post(f"/my/ships/{ship}/extract", body=body)  # Extraction concept. :contentReference[oaicite:5]{index=5}
+def api_survey(token, ship):
+    return STClient(token).post(f"/my/ships/{ship}/survey", body={})
 def api_jettison(token, ship, symbol, units):
     return STClient(token).post(f"/my/ships/{ship}/jettison", body={"symbol": symbol, "units": units})
 def api_sell(token, ship, symbol, units):
@@ -183,14 +231,61 @@ with tab_dash:
     try:
         me = api_my_agent(token).get("data", {})
         ships = api_my_ships(token).get("data", [])
+        contracts = api_my_contracts(token).get("data", [])
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Agent", me.get("symbol"))
         c2.metric("Faction", me.get("startingFaction"))
         c3.metric("HQ", me.get("headquarters"))
         c4.metric("Credits", f"{me.get('credits',0):,}")
         c5.metric("Fleet Size", len(ships))
+
+        c6, c7, c8 = st.columns(3)
+        statuses = Counter([s.get("nav", {}).get("status", "UNKNOWN") for s in ships]) if ships else {}
+        in_transit = statuses.get("IN_TRANSIT", 0)
+        docked = statuses.get("DOCKED", 0)
+        orbiting = statuses.get("IN_ORBIT", 0)
+        c6.metric("Ships in transit", in_transit)
+        c7.metric("Docked", docked)
+        c8.metric("In orbit", orbiting)
+
+        active_contracts = sum(1 for c in contracts if c.get("accepted") and not c.get("fulfilled"))
+        pending_contracts = sum(1 for c in contracts if not c.get("accepted"))
+        c9, c10 = st.columns(2)
+        c9.metric("Active contracts", active_contracts)
+        c10.metric("Pending offers", pending_contracts)
+
         st.caption("SpaceTraders is a programmable API game — automate everything you see here. (Docs home) ")
         st.caption("Quickstart: new game → first mission → purchase ship → mine → sell → deliver.")
+
+        if ships:
+            roles = Counter([s.get("registration", {}).get("role", "UNSPEC") for s in ships])
+            role_df = pd.DataFrame(
+                [{"Role": role, "Count": count} for role, count in roles.most_common()]
+            )
+            cchart, ctable = st.columns([2, 1])
+            with cchart:
+                fig = go.Figure()
+                fig.add_trace(go.Pie(labels=role_df["Role"], values=role_df["Count"], hole=0.45))
+                fig.update_layout(height=380, margin=dict(l=30, r=30, t=30, b=30), title="Fleet by role")
+                st.plotly_chart(fig, use_container_width=True)
+            with ctable:
+                st.dataframe(role_df, hide_index=True, use_container_width=True)
+
+            cargo_stats = []
+            for ship in ships:
+                cargo = ship.get("cargo", {})
+                capacity = cargo.get("capacity", 0)
+                used = cargo.get("units", 0)
+                percent = round((used / capacity) * 100, 1) if capacity else 0
+                cargo_stats.append({
+                    "Ship": ship.get("symbol"),
+                    "Role": ship.get("registration", {}).get("role"),
+                    "Location": ship.get("nav", {}).get("waypointSymbol"),
+                    "Status": ship.get("nav", {}).get("status"),
+                    "Cargo": f"{used}/{capacity}",
+                    "Fill %": percent,
+                })
+            st.dataframe(pd.DataFrame(cargo_stats), hide_index=True, use_container_width=True)
     except Exception as e:
         toast_err(str(e))
 
@@ -213,65 +308,165 @@ with tab_fleet:
         fleet = api_my_ships(token).get("data", [])
         if not fleet:
             st.info("No ships found.")
-        for ship in fleet:
-            sym = ship.get("symbol")
-            with st.expander(f"🚢 {sym} — {ship.get('registration',{}).get('role','?')}"):
-                nav = ship.get("nav", {})
-                fuel = ship.get("fuel", {})
-                cargo = ship.get("cargo", {})
-                c1, c2, c3, c4 = st.columns(4)
-                c1.write(f"**Status**: {nav.get('status')}")
-                c2.write(f"**At**: {nav.get('waypointSymbol')}")
-                c3.write(f"**Fuel**: {fuel.get('current',0)}/{fuel.get('capacity',0)}")
-                c4.write(f"**Engine**: {ship.get('engine',{}).get('name','?')}")
+        else:
+            colf1, colf2, colf3, colf4 = st.columns([2, 2, 2, 1])
+            search_term = colf1.text_input("Search (symbol or location)")
+            roles_available = sorted({ship.get("registration", {}).get("role", "UNSPEC") for ship in fleet})
+            statuses_available = sorted({ship.get("nav", {}).get("status", "UNKNOWN") for ship in fleet})
+            role_filter = colf2.multiselect("Roles", roles_available, default=roles_available)
+            status_filter = colf3.multiselect("Statuses", statuses_available, default=statuses_available)
+            if colf4.button("Refresh", help="Clear cache and reload from the API"):
+                st.cache_data.clear()
+                st.experimental_rerun()
 
-                cap = cargo.get("capacity", 0); used = cargo.get("units", 0); left = max(0, cap - used)
-                st.progress(min(1.0, used / cap) if cap else 0.0, text=f"Cargo {used}/{cap} (free {left})")
-                inv = cargo.get("inventory", [])
-                if inv:
-                    st.dataframe(pd.DataFrame(inv), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("Empty cargo")
+            filtered = []
+            for ship in fleet:
+                role = ship.get("registration", {}).get("role", "UNSPEC")
+                status = ship.get("nav", {}).get("status", "UNKNOWN")
+                text_blob = f"{ship.get('symbol','')} {ship.get('nav',{}).get('waypointSymbol','')}".lower()
+                if role_filter and role not in role_filter:
+                    continue
+                if status_filter and status not in status_filter:
+                    continue
+                if search_term and search_term.lower() not in text_blob:
+                    continue
+                filtered.append(ship)
 
-                # Controls
-                cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
-                if cc1.button("Orbit", key=f"o_{sym}"):
-                    try: api_orbit(token, sym); toast_ok("In orbit"); st.cache_data.clear()
-                    except Exception as e: toast_err(str(e))
-                if cc2.button("Dock", key=f"d_{sym}"):
-                    try: api_dock(token, sym); toast_ok("Docked"); st.cache_data.clear()
-                    except Exception as e: toast_err(str(e))
-                if cc3.button("Refuel", key=f"r_{sym}"):
-                    try: api_refuel(token, sym); toast_ok("Refueled"); st.cache_data.clear()
-                    except Exception as e: toast_err(str(e))
+            if filtered:
+                utilization_rows = []
+                for ship in filtered:
+                    cargo = ship.get("cargo", {})
+                    capacity = cargo.get("capacity", 0)
+                    used = cargo.get("units", 0)
+                    frac = (used / capacity) if capacity else 0
+                    utilization_rows.append({
+                        "Ship": ship.get("symbol"),
+                        "Role": ship.get("registration", {}).get("role"),
+                        "Status": ship.get("nav", {}).get("status"),
+                        "Waypoint": ship.get("nav", {}).get("waypointSymbol"),
+                        "Fuel": f"{ship.get('fuel',{}).get('current',0)}/{ship.get('fuel',{}).get('capacity',0)}",
+                        "Cargo fill %": round(frac * 100, 1),
+                    })
+                if utilization_rows:
+                    st.dataframe(pd.DataFrame(utilization_rows), hide_index=True, use_container_width=True)
+                    st.download_button(
+                        "Download filtered fleet manifest",
+                        data=json.dumps(filtered, indent=2),
+                        file_name="fleet_manifest.json",
+                        mime="application/json",
+                    )
+            else:
+                st.warning("No ships match the current filters.")
 
-                dest = cc4.text_input("Waypoint", value=nav.get("waypointSymbol",""), key=f"wp_{sym}")
-                if cc4.button("Navigate", key=f"n_{sym}"):
-                    try:
-                        api_nav(token, sym, dest); toast_ok(f"Navigating to {dest}")
-                        st.cache_data.clear()
-                    except Exception as e: toast_err(str(e))
+            for ship in filtered:
+                sym = ship.get("symbol")
+                with st.expander(f"🚢 {sym} — {ship.get('registration',{}).get('role','?')}"):
+                    nav = ship.get("nav", {})
+                    fuel = ship.get("fuel", {})
+                    cargo = ship.get("cargo", {})
+                    progress = travel_progress(nav)
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.write(f"**Status**: {nav.get('status')}")
+                    c2.write(f"**At**: {nav.get('waypointSymbol')}")
+                    c3.write(f"**Fuel**: {fuel.get('current',0)}/{fuel.get('capacity',0)}")
+                    c4.write(f"**Engine**: {ship.get('engine',{}).get('name','?')}")
 
-                if cc5.button("Extract", key=f"x_{sym}"):
-                    try:
-                        resp = api_extract(token, sym)
-                        y = resp.get("data",{}).get("extraction",{}).get("yield",{})
-                        toast_ok(f"Extracted {y.get('units',0)} of {y.get('symbol','?')}")
-                        st.cache_data.clear()
-                    except Exception as e:
-                        toast_err(str(e)); st.info(f"⏳ Cooldown likely: wait ~{parse_cooldown_seconds(str(e))}s")
+                    if progress.get("fraction") is not None:
+                        st.progress(progress["fraction"], text=f"En route — ETA {progress['eta']}")
+                    elif nav.get("status") == "IN_ORBIT":
+                        st.info("Ship is in orbit and ready for commands.")
+                    elif nav.get("status") == "DOCKED":
+                        st.info("Ship is docked. Orbit before navigating or extracting.")
 
-                with cc6:
-                    st.caption("Sell/Jettison")
-                    s_sym = st.text_input("Symbol", key=f"sell_sym_{sym}")
-                    s_units = st.number_input("Units", min_value=1, value=1, step=1, key=f"sell_qty_{sym}")
-                    b1, b2 = st.columns(2)
-                    if b1.button("Sell", key=f"sell_{sym}"):
-                        try: api_sell(token, sym, s_sym, int(s_units)); toast_ok("Sold"); st.cache_data.clear()
+                    cap = cargo.get("capacity", 0); used = cargo.get("units", 0); left = max(0, cap - used)
+                    st.progress(min(1.0, used / cap) if cap else 0.0, text=f"Cargo {used}/{cap} (free {left})")
+                    inv = cargo.get("inventory", [])
+                    if inv:
+                        st.dataframe(pd.DataFrame(inv), use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Empty cargo")
+
+                    # Controls
+                    cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
+                    if cc1.button("Orbit", key=f"o_{sym}"):
+                        try: api_orbit(token, sym); toast_ok("In orbit"); st.cache_data.clear()
                         except Exception as e: toast_err(str(e))
-                    if b2.button("Jettison", key=f"jet_{sym}"):
-                        try: api_jettison(token, sym, s_sym, int(s_units)); toast_ok("Jettisoned"); st.cache_data.clear()
+                    if cc2.button("Dock", key=f"d_{sym}"):
+                        try: api_dock(token, sym); toast_ok("Docked"); st.cache_data.clear()
                         except Exception as e: toast_err(str(e))
+                    if cc3.button("Refuel", key=f"r_{sym}"):
+                        try: api_refuel(token, sym); toast_ok("Refueled"); st.cache_data.clear()
+                        except Exception as e: toast_err(str(e))
+
+                    dest = cc4.text_input("Waypoint", value=nav.get("waypointSymbol",""), key=f"wp_{sym}")
+                    if cc4.button("Navigate", key=f"n_{sym}"):
+                        try:
+                            api_nav(token, sym, dest); toast_ok(f"Navigating to {dest}")
+                            st.cache_data.clear()
+                        except Exception as e: toast_err(str(e))
+
+                    if cc5.button("Extract", key=f"x_{sym}"):
+                        try:
+                            resp = api_extract(token, sym)
+                            y = resp.get("data",{}).get("extraction",{}).get("yield",{})
+                            toast_ok(f"Extracted {y.get('units',0)} of {y.get('symbol','?')}")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            toast_err(str(e)); st.info(f"⏳ Cooldown likely: wait ~{parse_cooldown_seconds(str(e))}s")
+
+                    with cc6:
+                        st.caption("Sell/Jettison")
+                        s_sym = st.text_input("Symbol", key=f"sell_sym_{sym}")
+                        s_units = st.number_input("Units", min_value=1, value=1, step=1, key=f"sell_qty_{sym}")
+                        b1, b2 = st.columns(2)
+                        if b1.button("Sell", key=f"sell_{sym}"):
+                            try: api_sell(token, sym, s_sym, int(s_units)); toast_ok("Sold"); st.cache_data.clear()
+                            except Exception as e: toast_err(str(e))
+                        if b2.button("Jettison", key=f"jet_{sym}"):
+                            try: api_jettison(token, sym, s_sym, int(s_units)); toast_ok("Jettisoned"); st.cache_data.clear()
+                            except Exception as e: toast_err(str(e))
+
+                    st.divider()
+                    colops1, colops2, colops3 = st.columns(3)
+                    if colops1.button("Sync Nav Status", key=f"sync_{sym}"):
+                        try:
+                            api_nav_status(token, sym)
+                            st.cache_data.clear()
+                            st.experimental_rerun()
+                        except Exception as e:
+                            toast_err(str(e))
+
+                    surveys_state = st.session_state.setdefault("surveys", {})
+                    if colops2.button("Create Survey", key=f"survey_{sym}"):
+                        try:
+                            survey_resp = api_survey(token, sym)
+                            survey_data = survey_resp.get("data", {}).get("surveys", [])
+                            if survey_data:
+                                ship_surveys = surveys_state.setdefault(sym, [])
+                                ship_surveys.extend(survey_data)
+                                toast_ok(f"Stored {len(survey_data)} surveys")
+                            else:
+                                toast_warn("No surveys returned")
+                        except Exception as e:
+                            toast_err(str(e))
+
+                    available_surveys = surveys_state.get(sym, [])
+                    if available_surveys:
+                        with st.expander("Stored surveys"):
+                            for idx, survey in enumerate(available_surveys):
+                                expires = parse_ts(survey.get("expiration"))
+                                expires_in = humanize_timedelta((expires - datetime.now(timezone.utc)).total_seconds() if expires else None)
+                                st.write(f"Survey {idx + 1} — expires in {expires_in}")
+                                st.json(survey)
+                                if st.button("Use survey", key=f"use_survey_{sym}_{idx}"):
+                                    try:
+                                        api_extract(token, sym, survey)
+                                        toast_ok("Extraction started with survey")
+                                        st.cache_data.clear()
+                                        surveys_state[sym].pop(idx)
+                                        st.experimental_rerun()
+                                    except Exception as e:
+                                        toast_err(str(e))
     except Exception as e:
         toast_err(str(e))
 
@@ -290,11 +485,22 @@ with tab_contracts:
                 c1, c2, c3 = st.columns(3)
                 c1.write(f"**Type**: {c.get('type')}")
                 c2.write(f"**Accepted**: {acc}")
-                c3.write(f"**Deadline**: {terms.get('deadline')}")
+                deadline = terms.get("deadline")
+                c3.write(f"**Deadline**: {deadline if deadline else '—'}")
                 deliver = terms.get("deliver", [])
                 if deliver:
                     df = pd.DataFrame(deliver)
                     st.dataframe(df, hide_index=True, use_container_width=True)
+                    for deliver_idx, deliver_item in enumerate(deliver):
+                        required = deliver_item.get("unitsRequired") or deliver_item.get("units", 0)
+                        fulfilled = deliver_item.get("unitsFulfilled") or deliver_item.get("fulfilled", 0)
+                        if required:
+                            frac = min(1.0, fulfilled / required)
+                        else:
+                            frac = 0
+                        destination = deliver_item.get("destinationSymbol", "?")
+                        symbol = deliver_item.get("tradeSymbol", "?")
+                        st.progress(frac, text=f"{symbol} to {destination} — {fulfilled}/{required} units")
                 if not acc and st.button("Accept contract", key=f"ac_{cid}"):
                     try:
                         api_accept_contract(token, cid); toast_ok("Contract accepted"); st.cache_data.clear()
@@ -337,7 +543,39 @@ with tab_systems:
         wps_resp = st.session_state.get("wps", {})
         waypoints = wps_resp.get("data", []) if wps_resp else []
         if waypoints:
-            st.dataframe(pd.DataFrame(waypoints), use_container_width=True, hide_index=True)
+            waypoints_df = pd.DataFrame(waypoints)
+            st.dataframe(waypoints_df, use_container_width=True, hide_index=True)
+            type_counts = Counter()
+            if "type" in waypoints_df:
+                type_counts.update(waypoints_df["type"].fillna("UNKNOWN"))
+            if not type_counts:
+                type_counts = Counter([w.get("type", "UNKNOWN") for w in waypoints])
+            trait_counts = Counter()
+            for w in waypoints:
+                for trait in w.get("traits", []):
+                    name = trait.get("symbol") if isinstance(trait, dict) else trait
+                    if name:
+                        trait_counts[name] += 1
+            ct1, ct2 = st.columns(2)
+            if type_counts:
+                type_df = pd.DataFrame({"Type": list(type_counts.keys()), "Count": list(type_counts.values())})
+                type_df = type_df.sort_values("Count", ascending=False)
+                with ct1:
+                    fig_types = go.Figure()
+                    fig_types.add_trace(go.Bar(x=type_df["Type"], y=type_df["Count"]))
+                    fig_types.update_layout(height=320, margin=dict(l=10, r=10, t=30, b=80), title="Waypoint types")
+                    st.plotly_chart(fig_types, use_container_width=True)
+            if trait_counts:
+                trait_df = pd.DataFrame({"Trait": list(trait_counts.keys()), "Count": list(trait_counts.values())})
+                trait_df = trait_df.sort_values("Count", ascending=False)
+                with ct2:
+                    st.dataframe(trait_df, hide_index=True, use_container_width=True)
+            st.download_button(
+                "Download waypoints JSON",
+                data=json.dumps(waypoints, indent=2),
+                file_name=f"{sys_sym}_waypoints.json",
+                mime="application/json",
+            )
             # Simple XY scatter
             xs = [w.get("x", 0) for w in waypoints]; ys = [w.get("y", 0) for w in waypoints]
             labels = [w.get("symbol") for w in waypoints]; types = [w.get("type","?") for w in waypoints]
@@ -364,7 +602,27 @@ with tab_markets:
             st.json(mk)
             if mk.get("tradeGoods"):
                 st.write("**Trade Goods**")
-                st.dataframe(pd.DataFrame(mk["tradeGoods"]), use_container_width=True, hide_index=True)
+                goods_df = pd.DataFrame(mk["tradeGoods"])
+                st.dataframe(goods_df, use_container_width=True, hide_index=True)
+                exports = goods_df[goods_df.get("type") == "EXPORT"] if "type" in goods_df else pd.DataFrame()
+                imports = goods_df[goods_df.get("type") == "IMPORT"] if "type" in goods_df else pd.DataFrame()
+                exchanges = goods_df[goods_df.get("type") == "EXCHANGE"] if "type" in goods_df else pd.DataFrame()
+                colm1, colm2, colm3 = st.columns(3)
+                if not exports.empty:
+                    best_sell = exports.sort_values("sellPrice", ascending=False).iloc[0]
+                    colm1.metric("Best export sale", f"{best_sell['symbol']}", f"{int(best_sell['sellPrice']):,} credits")
+                if not imports.empty:
+                    best_buy = imports.sort_values("purchasePrice", ascending=True).iloc[0]
+                    colm2.metric("Cheapest import", f"{best_buy['symbol']}", f"{int(best_buy['purchasePrice']):,} credits")
+                if not exchanges.empty:
+                    exchange = exchanges.iloc[0]
+                    colm3.metric("Exchange good", exchange["symbol"], exchange.get("supply", "-"))
+                st.download_button(
+                    "Download market JSON",
+                    data=json.dumps(mk, indent=2),
+                    file_name=f"{wp}_market.json",
+                    mime="application/json",
+                )
             st.caption("Imports/Exports/Exchange reflect supply & demand — exports usually cheaper to buy.")  # Markets guide. :contentReference[oaicite:13]{index=13}
         except Exception as e:
             toast_err(str(e))
@@ -391,6 +649,9 @@ with tab_shipyards:
             if yd.get("ships"):
                 st.write("**Available Ships**")
                 st.dataframe(pd.DataFrame(yd["ships"]), use_container_width=True, hide_index=True)
+            if yd.get("transactions"):
+                st.write("**Recent Transactions**")
+                st.dataframe(pd.DataFrame(yd["transactions"]), use_container_width=True, hide_index=True)
             st.caption("Price visibility may require a ship present at this waypoint (probe provided at start).")  # Quickstart note. :contentReference[oaicite:14]{index=14}
         except Exception as e:
             toast_err(str(e))
@@ -416,6 +677,11 @@ with tab_outfit:
         st.info("No ships.")
     else:
         ship_sel = st.selectbox("Ship", ship_opts)
+        ship_data = next((s for s in ships if s.get("symbol") == ship_sel), {})
+        info_col1, info_col2, info_col3 = st.columns(3)
+        info_col1.metric("Frame", ship_data.get("frame", {}).get("name", "?"))
+        info_col2.metric("Reactor", ship_data.get("reactor", {}).get("name", "?"))
+        info_col3.metric("Crew", ship_data.get("crew", {}).get("current", 0))
         colm1, colm2, colm3 = st.columns(3)
         if colm1.button("Repair Ship"):
             try:
@@ -431,4 +697,16 @@ with tab_outfit:
                 st.cache_data.clear()
             except Exception as e:
                 toast_err(str(e))
+        with st.expander("Modules"):
+            modules = ship_data.get("modules", [])
+            if modules:
+                st.dataframe(pd.DataFrame(modules), hide_index=True, use_container_width=True)
+            else:
+                st.caption("No modules equipped.")
+        with st.expander("Mounts"):
+            mounts = ship_data.get("mounts", [])
+            if mounts:
+                st.dataframe(pd.DataFrame(mounts), hide_index=True, use_container_width=True)
+            else:
+                st.caption("No mounts equipped.")
         st.caption("More mount/module swap endpoints can be wired similarly at shipyards (see outfitting docs).")
