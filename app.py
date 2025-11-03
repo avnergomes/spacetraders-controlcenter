@@ -31,6 +31,73 @@ def toast_warn(msg: str): st.toast(msg, icon="⚠️")
 def toast_err(msg: str): st.toast(msg, icon="❌")
 
 
+def trigger_rerun() -> None:
+    rerun_fn = getattr(st, "experimental_rerun", None)
+    if rerun_fn is None:
+        rerun_fn = getattr(st, "rerun")
+    rerun_fn()
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
+
 def parse_ts(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -489,7 +556,7 @@ with tab_fleet:
             status_filter = colf3.multiselect("Statuses", statuses_available, default=statuses_available)
             if colf4.button("Refresh", help="Clear cache and reload from the API"):
                 st.cache_data.clear()
-                st.experimental_rerun()
+                trigger_rerun()
 
             filtered = []
             for ship in fleet:
@@ -697,7 +764,7 @@ with tab_fleet:
                         try:
                             api_nav_status(token, sym)
                             st.cache_data.clear()
-                            st.experimental_rerun()
+                            trigger_rerun()
                         except Exception as e:
                             toast_err(str(e))
 
@@ -729,7 +796,7 @@ with tab_fleet:
                                         toast_ok("Extraction started with survey")
                                         st.cache_data.clear()
                                         surveys_state[sym].pop(idx)
-                                        st.experimental_rerun()
+                                        trigger_rerun()
                                     except Exception as e:
                                         toast_err(str(e))
     except Exception as e:
