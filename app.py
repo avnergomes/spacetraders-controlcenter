@@ -90,6 +90,66 @@ def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
     except Exception:
         return None
 
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
 # ================================
 # HTTP client (auto {} for POST)
 # ================================
@@ -304,9 +364,14 @@ if not token:
 
 if "mission_shortcuts" not in st.session_state:
     st.session_state["mission_shortcuts"] = {"mining": "", "delivery": "", "warehouse": ""}
-for shortcut_key, state_key in (("mining", "shortcut_mining"), ("delivery", "shortcut_delivery"), ("warehouse", "shortcut_warehouse")):
-    if state_key not in st.session_state:
-        st.session_state[state_key] = st.session_state["mission_shortcuts"].get(shortcut_key, "")
+for shortcut_key, state_key in (
+    ("mining", "shortcut_mining"),
+    ("delivery", "shortcut_delivery"),
+    ("warehouse", "shortcut_warehouse"),
+):
+    desired_value = normalize_symbol(st.session_state["mission_shortcuts"].get(shortcut_key, ""))
+    if st.session_state.get(state_key) != desired_value:
+        st.session_state[state_key] = desired_value
 
 # ================================
 # Tabs
@@ -611,17 +676,14 @@ with tab_fleet:
                                     if section_name == "Mining sites":
                                         if action_cols[1].button("Set mining shortcut", key=f"set_mining_{section_key}_{sym}"):
                                             shortcuts["mining"] = normalize_symbol(selected_symbol)
-                                            st.session_state["shortcut_mining"] = normalize_symbol(selected_symbol)
                                             toast_ok(f"Mining shortcut set to {selected_symbol}")
                                     elif section_name == "Markets & delivery":
                                         if action_cols[1].button("Set delivery shortcut", key=f"set_delivery_{section_key}_{sym}"):
                                             shortcuts["delivery"] = normalize_symbol(selected_symbol)
-                                            st.session_state["shortcut_delivery"] = normalize_symbol(selected_symbol)
                                             toast_ok(f"Delivery shortcut set to {selected_symbol}")
                                     elif section_name == "Warehouses":
                                         if action_cols[1].button("Set warehouse shortcut", key=f"set_warehouse_{section_key}_{sym}"):
                                             shortcuts["warehouse"] = normalize_symbol(selected_symbol)
-                                            st.session_state["shortcut_warehouse"] = normalize_symbol(selected_symbol)
                                             toast_ok(f"Warehouse shortcut set to {selected_symbol}")
                                     elif section_name == "Shipyards":
                                         action_cols[1].caption("Shipyard services available here.")
@@ -710,7 +772,6 @@ with tab_contracts:
                             key=f"contract_delivery_{cid}_{deliver_idx}",
                         ):
                             st.session_state["mission_shortcuts"]["delivery"] = normalize_symbol(destination)
-                            st.session_state["shortcut_delivery"] = normalize_symbol(destination)
                             toast_ok(f"Delivery shortcut now set to {destination}")
                         col_d2.caption("Adds to fleet quick-nav buttons.")
                 if not acc and st.button("Accept contract", key=f"ac_{cid}"):
