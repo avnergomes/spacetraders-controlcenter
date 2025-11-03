@@ -104,6 +104,267 @@ def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
     except Exception:
         return None
 
+
+def trigger_rerun() -> None:
+    rerun_fn = getattr(st, "experimental_rerun", None)
+    if rerun_fn is None:
+        rerun_fn = getattr(st, "rerun")
+    rerun_fn()
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
+def system_symbol_from_waypoint(symbol: Optional[str]) -> str:
+    parts = normalize_symbol(symbol).split("-")
+    if len(parts) >= 2:
+        return "-".join(parts[:2])
+    return ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
+
+def trigger_rerun() -> None:
+    rerun_fn = getattr(st, "experimental_rerun", None)
+    if rerun_fn is None:
+        rerun_fn = getattr(st, "rerun")
+    rerun_fn()
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
 # ================================
 # HTTP client (auto {} for POST)
 # ================================
