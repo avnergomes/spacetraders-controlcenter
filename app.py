@@ -87,6 +87,80 @@ def normalize_symbol(symbol: Optional[str]) -> str:
     return symbol.strip().upper() if isinstance(symbol, str) else ""
 
 
+def system_symbol_from_waypoint(symbol: Optional[str]) -> str:
+    parts = normalize_symbol(symbol).split("-")
+    if len(parts) >= 2:
+        return "-".join(parts[:2])
+    return ""
+
+
+def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
+    if not a or not b:
+        return None
+    try:
+        ax, ay = float(a.get("x")), float(a.get("y"))
+        bx, by = float(b.get("x")), float(b.get("y"))
+        return math.hypot(ax - bx, ay - by)
+    except Exception:
+        return None
+
+
+def trigger_rerun() -> None:
+    rerun_fn = getattr(st, "experimental_rerun", None)
+    if rerun_fn is None:
+        rerun_fn = getattr(st, "rerun")
+    rerun_fn()
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def humanize_timedelta(delta_seconds: Optional[float]) -> str:
+    if delta_seconds is None:
+        return "—"
+    seconds = int(delta_seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h"
+
+
+def travel_progress(nav: Dict[str, Any]) -> Dict[str, Any]:
+    route = nav.get("route", {}) if nav else {}
+    dep = parse_ts(route.get("departureTime"))
+    arr = parse_ts(route.get("arrival"))
+    if not dep or not arr:
+        return {"fraction": None, "eta": "—"}
+    now = datetime.now(timezone.utc)
+    total = (arr - dep).total_seconds()
+    if total <= 0:
+        return {"fraction": None, "eta": "—"}
+    elapsed = (now - dep).total_seconds()
+    fraction = min(1.0, max(0.0, elapsed / total))
+    eta_seconds = (arr - now).total_seconds()
+    return {
+        "fraction": fraction,
+        "eta": humanize_timedelta(eta_seconds if eta_seconds > 0 else 0),
+        "arrival": arr,
+    }
+
+
+def normalize_symbol(symbol: Optional[str]) -> str:
+    return symbol.strip().upper() if isinstance(symbol, str) else ""
+
+
 def waypoint_distance(a: Optional[dict], b: Optional[dict]) -> Optional[float]:
     if not a or not b:
         return None
@@ -292,12 +366,16 @@ def api_waypoints(token: str, system_symbol: str, page=1, limit=20, traits: Opti
 
 @st.cache_data(show_spinner=False)
 def api_market(token: str, waypoint_symbol: str):
-    sys_sym = waypoint_symbol.split("-")[0]
+    sys_sym = system_symbol_from_waypoint(waypoint_symbol)
+    if not sys_sym:
+        raise RuntimeError(f"Unable to determine system for waypoint {waypoint_symbol}")
     return STClient(token).get(f"/systems/{sys_sym}/waypoints/{waypoint_symbol}/market")  # Markets concept. :contentReference[oaicite:2]{index=2}
 
 @st.cache_data(show_spinner=False)
 def api_shipyard(token: str, waypoint_symbol: str):
-    sys_sym = waypoint_symbol.split("-")[0]
+    sys_sym = system_symbol_from_waypoint(waypoint_symbol)
+    if not sys_sym:
+        raise RuntimeError(f"Unable to determine system for waypoint {waypoint_symbol}")
     return STClient(token).get(f"/systems/{sys_sym}/waypoints/{waypoint_symbol}/shipyard")  # Shipyard quickstart. :contentReference[oaicite:3]{index=3}
 
 
@@ -405,7 +483,8 @@ def api_repair_ship(token, ship, parts=0):
     # Per maintenance guide: repair at shipyard. (Exact body may vary by version; keep minimal)
     sys_wp = api_nav_status(token, ship).get("data", {}).get("waypointSymbol")
     if not sys_wp: raise RuntimeError("Unknown ship location for repair.")
-    sys_sym = sys_wp.split("-")[0]
+    if not system_symbol_from_waypoint(sys_wp):
+        raise RuntimeError(f"Invalid waypoint symbol {sys_wp} for repair")
     # Example repair endpoint from maintenance docs (high-level): use POST /my/ships/{ship}/repair
     return STClient(token).post(f"/my/ships/{ship}/repair", body={})  # Maintenance guide. :contentReference[oaicite:7]{index=7}
 def api_scrap_ship(token, ship):
@@ -1097,7 +1176,9 @@ with tab_outfit:
             col_lookup1, col_lookup2 = st.columns([1, 1])
             if col_lookup1.button("Load waypoint traits", key=f"load_traits_{ship_sel}") and lookup_value_norm:
                 try:
-                    system = lookup_value_norm.split("-")[0]
+                    system = system_symbol_from_waypoint(lookup_value_norm)
+                    if not system:
+                        raise RuntimeError(f"Unable to determine system for {lookup_value_norm}")
                     wps = fetch_system_waypoints(token, system)
                     wp_match = next((w for w in wps if normalize_symbol(w.get("symbol")) == lookup_value_norm), None)
                     if wp_match:
