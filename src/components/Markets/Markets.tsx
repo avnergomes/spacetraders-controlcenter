@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
-import { TrendingUp, TrendingDown, ShoppingCart } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ShoppingCart } from 'lucide-react';
 import { useShips, useWaypoints } from '../../hooks/useSpaceTraders';
-import { formatCredits, calculateProfitMargin } from '../../utils/helpers';
 
 const Markets = () => {
   const { data: ships } = useShips();
   const [selectedSystem, setSelectedSystem] = useState('');
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (ships && ships.length > 0 && !selectedSystem) {
       const systemSymbol = ships[0].nav.systemSymbol;
       setSelectedSystem(systemSymbol);

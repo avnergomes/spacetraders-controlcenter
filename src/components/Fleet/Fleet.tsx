@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Rocket, Fuel, Package, MapPin, Clock, Search } from 'lucide-react';
 import { useShips } from '../../hooks/useSpaceTraders';
-import { formatNumber, getShipRoleColor, formatRelativeTime, calculatePercentage } from '../../utils/helpers';
+import { getShipRoleColor, formatRelativeTime, calculatePercentage } from '../../utils/helpers';
 import type { Ship } from '../../types';
 
 const Fleet = () => {

@@ -9,7 +9,12 @@
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
-  "keywords": ["spacetraders", "game", "api", "control-panel"],
+  "keywords": [
+    "spacetraders",
+    "game",
+    "api",
+    "control-panel"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -29,7 +34,7 @@
     "@vitejs/plugin-react": "^5.1.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.16",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
   }

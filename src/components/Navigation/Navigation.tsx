@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Navigation as NavigationIcon, MapPin, Fuel, Clock, Send } from 'lucide-react';
 import { useShips, useWaypoints, useNavigateShip } from '../../hooks/useSpaceTraders';
 import { calculateDistance, calculateFuelNeeded, calculateTravelTime, formatDuration } from '../../utils/helpers';
