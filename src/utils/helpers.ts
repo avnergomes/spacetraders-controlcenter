@@ -165,7 +165,7 @@ export const calculateProfitMargin = (buyPrice: number, sellPrice: number): numb
 };
 
 // Find best trade route (simplified version)
-export const findBestTrades = (markets: any[], cargoCapacity: number) => {
+export const findBestTrades = (markets: any[], _cargoCapacity: number) => {
   const trades: any[] = [];
   
   markets.forEach((market) => {

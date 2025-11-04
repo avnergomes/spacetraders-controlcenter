@@ -1,5 +1,4 @@
-import React from 'react';
-import { FileText, Clock, CheckCircle, TrendingUp, Package } from 'lucide-react';
+import { FileText, Clock, CheckCircle, Package } from 'lucide-react';
 import { useContracts, useAcceptContract, useFulfillContract } from '../../hooks/useSpaceTraders';
 import { formatCredits, formatRelativeTime } from '../../utils/helpers';
 import type { Contract } from '../../types';

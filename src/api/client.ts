@@ -10,6 +10,7 @@ import type {
   ApiResponse,
   Survey,
   Extraction,
+  ShipNav,
 } from '../types';
 
 const BASE_URL = 'https://api.spacetraders.io/v2';

@@ -1,14 +1,20 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
-import { Rocket, Coins, FileText, TrendingUp, MapPin, AlertCircle } from 'lucide-react';
+import { Rocket, Coins, FileText, TrendingUp, MapPin } from 'lucide-react';
 import { useAgent, useShips, useContracts } from '../../hooks/useSpaceTraders';
 import { formatCredits, formatNumber, getShipRoleColor, formatRelativeTime } from '../../utils/helpers';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Dashboard = () => {
   const { data: agent, isLoading: agentLoading } = useAgent();
   const { data: ships, isLoading: shipsLoading } = useShips();
   const { data: contracts, isLoading: contractsLoading } = useContracts();
+
+  if (agentLoading || shipsLoading || contractsLoading) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12 text-gray-400">Loading dashboard...</div>
+      </div>
+    );
+  }
 
   const stats = [
     {
@@ -34,7 +40,7 @@ const Dashboard = () => {
     },
     {
       label: 'Headquarters',
-      value: agent?.headquarters.split('-').slice(-1)[0] || '-',
+      value: agent?.headquarters?.split('-').slice(-1)[0] || '-',
       icon: MapPin,
       color: 'text-purple-400',
       bgColor: 'bg-purple-500/10',
@@ -42,7 +48,6 @@ const Dashboard = () => {
   ];
 
   const activeShips = ships?.filter(s => s.nav.status === 'IN_TRANSIT' || s.nav.status === 'IN_ORBIT') || [];
-  const dockedShips = ships?.filter(s => s.nav.status === 'DOCKED') || [];
 
   return (
     <div className="p-6 space-y-6">

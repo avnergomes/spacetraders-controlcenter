@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MapPin, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { MapPin } from 'lucide-react';
 import { useShips, useWaypoints } from '../../hooks/useSpaceTraders';
 import { getWaypointTypeIcon } from '../../utils/helpers';
 
@@ -7,7 +7,7 @@ const Systems = () => {
   const { data: ships } = useShips();
   const [selectedSystem, setSelectedSystem] = useState('');
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (ships && ships.length > 0 && !selectedSystem) {
       const systemSymbol = ships[0].nav.systemSymbol;
       setSelectedSystem(systemSymbol);

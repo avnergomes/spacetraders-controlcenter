@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -6,7 +6,6 @@ import {
   Package,
   Fuel,
   Pickaxe,
-  ShoppingCart,
   Anchor,
   Orbit,
   RefreshCw,
@@ -18,11 +17,8 @@ import {
   useOrbitShip,
   useExtractResources,
   useRefuelShip,
-  useSellCargo,
-  useNavigateShip,
 } from '../../hooks/useSpaceTraders';
 import {
-  formatNumber,
   formatRelativeTime,
   calculatePercentage,
   getShipRoleColor,
@@ -41,7 +37,7 @@ const ShipDetail = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'cargo' | 'actions'>('overview');
   const [cooldownTimer, setCooldownTimer] = useState<number>(0);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (ship && ship.cooldown && isCooldownActive(ship.cooldown.expiration)) {
       const interval = setInterval(() => {
         const remaining = getRemainingCooldown(ship.cooldown.expiration);
@@ -97,7 +93,6 @@ const ShipDetail = () => {
   };
 
   const fuelPercentage = calculatePercentage(ship.fuel.current, ship.fuel.capacity);
-  const cargoPercentage = calculatePercentage(ship.cargo.units, ship.cargo.capacity);
   const isOnCooldown = cooldownTimer > 0;
 
   const tabs = [
@@ -266,7 +261,7 @@ const ShipDetail = () => {
       <div>
         {activeTab === 'overview' && <OverviewTab ship={ship} />}
         {activeTab === 'cargo' && <CargoTab ship={ship} />}
-        {activeTab === 'actions' && <ActionsTab ship={ship} />}
+        {activeTab === 'actions' && <ActionsTab />}
       </div>
     </div>
   );
@@ -415,7 +410,7 @@ const CargoTab = ({ ship }: { ship: any }) => {
   );
 };
 
-const ActionsTab = ({ ship }: { ship: any }) => {
+const ActionsTab = () => {
   return (
     <div className="card">
       <h3 className="text-lg font-semibold text-white mb-4">Available Actions</h3>
