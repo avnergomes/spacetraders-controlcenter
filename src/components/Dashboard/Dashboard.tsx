@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Rocket, Coins, FileText, TrendingUp, MapPin } from 'lucide-react';
 import { useAgent, useShips, useContracts } from '../../hooks/useSpaceTraders';
 import { formatCredits, formatNumber, getShipRoleColor, formatRelativeTime } from '../../utils/helpers';
+import LoadingState from '../common/LoadingState';
 
 const Dashboard = () => {
   const { data: agent, isLoading: agentLoading } = useAgent();
@@ -11,43 +13,49 @@ const Dashboard = () => {
   if (agentLoading || shipsLoading || contractsLoading) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-gray-400">Loading dashboard...</div>
+        <LoadingState label="Command Center" description="Calibrating mission controls..." />
       </div>
     );
   }
 
-  const stats = [
-    {
-      label: 'Total Credits',
-      value: agent ? formatCredits(agent.credits) : '-',
-      icon: Coins,
-      color: 'text-yellow-400',
-      bgColor: 'bg-yellow-500/10',
-    },
-    {
-      label: 'Fleet Size',
-      value: agent ? formatNumber(agent.shipCount) : '-',
-      icon: Rocket,
-      color: 'text-blue-400',
-      bgColor: 'bg-blue-500/10',
-    },
-    {
-      label: 'Active Contracts',
-      value: contracts ? contracts.filter(c => c.accepted && !c.fulfilled).length.toString() : '-',
-      icon: FileText,
-      color: 'text-green-400',
-      bgColor: 'bg-green-500/10',
-    },
-    {
-      label: 'Headquarters',
-      value: agent?.headquarters?.split('-').slice(-1)[0] || '-',
-      icon: MapPin,
-      color: 'text-purple-400',
-      bgColor: 'bg-purple-500/10',
-    },
-  ];
+  const stats = useMemo(
+    () => [
+      {
+        label: 'Total Credits',
+        value: agent ? formatCredits(agent.credits) : '-',
+        icon: Coins,
+        color: 'text-yellow-400',
+        bgColor: 'bg-yellow-500/10',
+      },
+      {
+        label: 'Fleet Size',
+        value: agent ? formatNumber(agent.shipCount) : '-',
+        icon: Rocket,
+        color: 'text-blue-400',
+        bgColor: 'bg-blue-500/10',
+      },
+      {
+        label: 'Active Contracts',
+        value: contracts ? contracts.filter(c => c.accepted && !c.fulfilled).length.toString() : '-',
+        icon: FileText,
+        color: 'text-green-400',
+        bgColor: 'bg-green-500/10',
+      },
+      {
+        label: 'Headquarters',
+        value: agent?.headquarters?.split('-').slice(-1)[0] || '-',
+        icon: MapPin,
+        color: 'text-purple-400',
+        bgColor: 'bg-purple-500/10',
+      },
+    ],
+    [agent, contracts]
+  );
 
-  const activeShips = ships?.filter(s => s.nav.status === 'IN_TRANSIT' || s.nav.status === 'IN_ORBIT') || [];
+  const activeShips = useMemo(
+    () => ships?.filter(s => s.nav.status === 'IN_TRANSIT' || s.nav.status === 'IN_ORBIT') || [],
+    [ships]
+  );
 
   return (
     <div className="p-6 space-y-6">

@@ -1,10 +1,11 @@
+import { memo, useMemo } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Rocket, 
-  ShoppingCart, 
-  FileText, 
-  Map, 
+import {
+  LayoutDashboard,
+  Rocket,
+  ShoppingCart,
+  FileText,
+  Map,
   Navigation as NavigationIcon,
   Menu,
   LogOut,
@@ -20,20 +21,23 @@ const Layout = () => {
   const { sidebarOpen, toggleSidebar, clearAuth } = useStore();
   const { data: agent } = useAgent();
 
+  const navItems = useMemo(
+    () => [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/fleet', icon: Rocket, label: 'Fleet' },
+      { to: '/markets', icon: ShoppingCart, label: 'Markets' },
+      { to: '/contracts', icon: FileText, label: 'Contracts' },
+      { to: '/systems', icon: Map, label: 'Systems' },
+      { to: '/navigation', icon: NavigationIcon, label: 'Navigation' },
+    ],
+    []
+  );
+
   const handleLogout = () => {
     api.clearAuthToken();
     clearAuth();
     navigate('/login');
   };
-
-  const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/fleet', icon: Rocket, label: 'Fleet' },
-    { to: '/markets', icon: ShoppingCart, label: 'Markets' },
-    { to: '/contracts', icon: FileText, label: 'Contracts' },
-    { to: '/systems', icon: Map, label: 'Systems' },
-    { to: '/navigation', icon: NavigationIcon, label: 'Navigation' },
-  ];
 
   return (
     <div className="flex h-screen bg-space-dark">
@@ -46,11 +50,15 @@ const Layout = () => {
         {/* Logo */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-gray-700">
           {sidebarOpen && (
-            <h1 className="text-xl font-bold text-space-accent">SpaceTraders</h1>
+            <h1 className="text-xl font-bold text-space-accent" aria-label="SpaceTraders Control Center">
+              SpaceTraders
+            </h1>
           )}
           <button
             onClick={toggleSidebar}
             className="p-2 hover:bg-gray-700 rounded transition-colors"
+            type="button"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -101,6 +109,7 @@ const Layout = () => {
               <button
                 onClick={handleLogout}
                 className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors text-sm"
+                type="button"
               >
                 <LogOut className="w-4 h-4" />
                 Logout
@@ -118,4 +127,4 @@ const Layout = () => {
   );
 };
 
-export default Layout;
+export default memo(Layout);

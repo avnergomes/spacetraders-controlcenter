@@ -1,42 +1,49 @@
+import { memo, useCallback, useMemo } from 'react';
 import { FileText, Clock, CheckCircle, Package } from 'lucide-react';
 import { useContracts, useAcceptContract, useFulfillContract } from '../../hooks/useSpaceTraders';
 import { formatCredits, formatRelativeTime } from '../../utils/helpers';
 import type { Contract } from '../../types';
+import LoadingState from '../common/LoadingState';
 
 const Contracts = () => {
   const { data: contracts, isLoading } = useContracts();
   const acceptContract = useAcceptContract();
   const fulfillContract = useFulfillContract();
 
-  const handleAccept = async (contractId: string) => {
+  const handleAccept = useCallback(async (contractId: string) => {
     try {
       await acceptContract.mutateAsync(contractId);
       alert('Contract accepted!');
     } catch (err: any) {
       alert(err.response?.data?.error?.message || 'Failed to accept contract');
     }
-  };
+  }, [acceptContract]);
 
-  const handleFulfill = async (contractId: string) => {
+  const handleFulfill = useCallback(async (contractId: string) => {
     try {
       await fulfillContract.mutateAsync(contractId);
       alert('Contract fulfilled!');
     } catch (err: any) {
       alert(err.response?.data?.error?.message || 'Failed to fulfill contract');
     }
-  };
+  }, [fulfillContract]);
 
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-gray-400">Loading contracts...</div>
+        <LoadingState label="Contracts" description="Negotiating with faction brokers..." />
       </div>
     );
   }
 
-  const activeContracts = contracts?.filter(c => c.accepted && !c.fulfilled) || [];
-  const availableContracts = contracts?.filter(c => !c.accepted) || [];
-  const completedContracts = contracts?.filter(c => c.fulfilled) || [];
+  const { activeContracts, availableContracts, completedContracts } = useMemo(() => {
+    const allContracts = contracts ?? [];
+    return {
+      activeContracts: allContracts.filter((c) => c.accepted && !c.fulfilled),
+      availableContracts: allContracts.filter((c) => !c.accepted),
+      completedContracts: allContracts.filter((c) => c.fulfilled),
+    };
+  }, [contracts]);
 
   return (
     <div className="p-6 space-y-6">
@@ -108,7 +115,7 @@ interface ContractCardProps {
   status: 'available' | 'active' | 'completed';
 }
 
-const ContractCard = ({ contract, onAccept, onFulfill, status }: ContractCardProps) => {
+const ContractCard = memo(({ contract, onAccept, onFulfill, status }: ContractCardProps) => {
   const isComplete = contract.terms.deliver.every(
     (d) => d.unitsFulfilled >= d.unitsRequired
   );
@@ -208,6 +215,8 @@ const ContractCard = ({ contract, onAccept, onFulfill, status }: ContractCardPro
       )}
     </div>
   );
-};
+});
+
+ContractCard.displayName = 'ContractCard';
 
 export default Contracts;
