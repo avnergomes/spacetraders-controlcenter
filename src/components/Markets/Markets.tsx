@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
 import { useShips, useWaypoints } from '../../hooks/useSpaceTraders';
+import LoadingState from '../common/LoadingState';
 
 const Markets = () => {
-  const { data: ships } = useShips();
+  const { data: ships, isLoading: shipsLoading } = useShips();
   const [selectedSystem, setSelectedSystem] = useState('');
 
   useEffect(() => {
@@ -13,7 +14,17 @@ const Markets = () => {
     }
   }, [ships, selectedSystem]);
 
-  const { data: waypointsData } = useWaypoints(selectedSystem, 'MARKETPLACE');
+  const { data: waypointsData, isLoading: waypointsLoading } = useWaypoints(selectedSystem, 'MARKETPLACE');
+
+  const markets = useMemo(() => waypointsData?.data ?? [], [waypointsData]);
+
+  if (shipsLoading) {
+    return (
+      <div className="p-6">
+        <LoadingState label="Markets" description="Locating your fleet to determine nearby exchanges..." />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -24,13 +35,15 @@ const Markets = () => {
 
       <div className="card">
         <h2 className="text-lg font-semibold text-white mb-4">Market Overview</h2>
-        {waypointsData && waypointsData.data.length > 0 ? (
+        {waypointsLoading ? (
+          <LoadingState label="Marketplaces" description="Scanning systems for trade hubs..." />
+        ) : markets.length > 0 ? (
           <div className="space-y-4">
             <p className="text-gray-400">
-              Found {waypointsData.data.length} markets in {selectedSystem}
+              Found {markets.length} markets in {selectedSystem}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {waypointsData.data.map((waypoint) => (
+              {markets.map((waypoint) => (
                 <div key={waypoint.symbol} className="p-4 bg-gray-800/50 rounded-lg">
                   <h3 className="font-medium text-white mb-2">{waypoint.symbol}</h3>
                   <p className="text-sm text-gray-400 mb-2">{waypoint.type}</p>

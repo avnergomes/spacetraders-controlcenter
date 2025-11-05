@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import { useShips, useWaypoints } from '../../hooks/useSpaceTraders';
 import { getWaypointTypeIcon } from '../../utils/helpers';
+import LoadingState from '../common/LoadingState';
 
 const Systems = () => {
-  const { data: ships } = useShips();
+  const { data: ships, isLoading: shipsLoading } = useShips();
   const [selectedSystem, setSelectedSystem] = useState('');
 
   useEffect(() => {
@@ -15,6 +16,16 @@ const Systems = () => {
   }, [ships, selectedSystem]);
 
   const { data: waypointsData, isLoading } = useWaypoints(selectedSystem);
+
+  const waypoints = useMemo(() => waypointsData?.data ?? [], [waypointsData]);
+
+  if (shipsLoading) {
+    return (
+      <div className="p-6">
+        <LoadingState label="Systems" description="Syncing fleet positions..." />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -35,16 +46,16 @@ const Systems = () => {
         </div>
 
         {isLoading && (
-          <div className="text-center py-12 text-gray-400">Loading waypoints...</div>
+          <LoadingState label="Waypoints" description="Deploying probes throughout the system..." />
         )}
 
-        {waypointsData && waypointsData.data.length > 0 && (
+        {!isLoading && waypoints.length > 0 && (
           <div>
             <h3 className="text-lg font-semibold text-white mb-4">
-              Waypoints ({waypointsData.data.length})
+              Waypoints ({waypoints.length})
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {waypointsData.data.map((waypoint) => (
+              {waypoints.map((waypoint) => (
                 <div key={waypoint.symbol} className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -80,6 +91,12 @@ const Systems = () => {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {!isLoading && waypoints.length === 0 && (
+          <div className="text-center py-12 text-gray-400">
+            No waypoints detected for this system.
           </div>
         )}
       </div>
