@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { ChangeEvent, memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Rocket, Fuel, Package, MapPin, Clock, Search } from 'lucide-react';
 import { useShips } from '../../hooks/useSpaceTraders';
 import { getShipRoleColor, formatRelativeTime, calculatePercentage } from '../../utils/helpers';
 import type { Ship } from '../../types';
+import LoadingState from '../common/LoadingState';
+
+const STATUS_COLORS: Record<'DOCKED' | 'IN_ORBIT' | 'IN_TRANSIT', string> = {
+  DOCKED: 'badge-success',
+  IN_ORBIT: 'badge-warning',
+  IN_TRANSIT: 'badge-info',
+};
 
 const Fleet = () => {
   const { data: ships, isLoading } = useShips();
@@ -11,23 +18,44 @@ const Fleet = () => {
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const filteredShips = ships?.filter((ship) => {
-    const matchesSearch =
-      ship.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ship.registration.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'ALL' || ship.registration.role === roleFilter;
-    const matchesStatus = statusFilter === 'ALL' || ship.nav.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
-  const roles = ships ? [...new Set(ships.map((s) => s.registration.role))] : [];
+  const filteredShips = useMemo(() => {
+    if (!ships) return [];
+
+    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
+    return ships.filter((ship) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        ship.symbol.toLowerCase().includes(normalizedSearch) ||
+        ship.registration.name.toLowerCase().includes(normalizedSearch);
+      const matchesRole = roleFilter === 'ALL' || ship.registration.role === roleFilter;
+      const matchesStatus = statusFilter === 'ALL' || ship.nav.status === statusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [ships, deferredSearchTerm, roleFilter, statusFilter]);
+
+  const roles = useMemo(() => {
+    if (!ships) return [] as string[];
+    return [...new Set(ships.map((s) => s.registration.role))];
+  }, [ships]);
+
+  const handleSearchChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  }, []);
+
+  const handleRoleChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    setRoleFilter(event.target.value);
+  }, []);
+
+  const handleStatusChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    setStatusFilter(event.target.value);
+  }, []);
 
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="text-center py-12">
-          <div className="text-gray-400">Loading fleet...</div>
-        </div>
+        <LoadingState label="Fleet" description="Synchronising ship manifests..." />
       </div>
     );
   }
@@ -52,9 +80,10 @@ const Fleet = () => {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={handleSearchChange}
                 placeholder="Search by name or symbol..."
                 className="input w-full pl-10"
+                aria-label="Search ships by name or symbol"
               />
             </div>
           </div>
@@ -63,8 +92,9 @@ const Fleet = () => {
             <label className="block text-sm text-gray-400 mb-2">Role</label>
             <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
+              onChange={handleRoleChange}
               className="input w-full"
+              aria-label="Filter ships by role"
             >
               <option value="ALL">All Roles</option>
               {roles.map((role) => (
@@ -79,8 +109,9 @@ const Fleet = () => {
             <label className="block text-sm text-gray-400 mb-2">Status</label>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={handleStatusChange}
               className="input w-full"
+              aria-label="Filter ships by status"
             >
               <option value="ALL">All Statuses</option>
               <option value="DOCKED">Docked</option>
@@ -92,7 +123,7 @@ const Fleet = () => {
       </div>
 
       {/* Ships Grid */}
-      {filteredShips && filteredShips.length > 0 ? (
+      {filteredShips.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredShips.map((ship) => (
             <ShipCard key={ship.symbol} ship={ship} />
@@ -108,15 +139,9 @@ const Fleet = () => {
   );
 };
 
-const ShipCard = ({ ship }: { ship: Ship }) => {
+const ShipCard = memo(({ ship }: { ship: Ship }) => {
   const fuelPercentage = calculatePercentage(ship.fuel.current, ship.fuel.capacity);
   const cargoPercentage = calculatePercentage(ship.cargo.units, ship.cargo.capacity);
-
-  const statusColors = {
-    DOCKED: 'badge-success',
-    IN_ORBIT: 'badge-warning',
-    IN_TRANSIT: 'badge-info',
-  };
 
   return (
     <Link
@@ -137,7 +162,7 @@ const ShipCard = ({ ship }: { ship: Ship }) => {
         <span className={`badge ${getShipRoleColor(ship.registration.role)}`}>
           {ship.registration.role.replace('_', ' ')}
         </span>
-        <span className={`badge ${statusColors[ship.nav.status]}`}>
+        <span className={`badge ${STATUS_COLORS[ship.nav.status]}`}>
           {ship.nav.status.replace('_', ' ')}
         </span>
       </div>
@@ -198,6 +223,8 @@ const ShipCard = ({ ship }: { ship: Ship }) => {
       </div>
     </Link>
   );
-};
+});
+
+ShipCard.displayName = 'ShipCard';
 
 export default Fleet;
