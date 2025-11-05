@@ -56,7 +56,17 @@ A modern, feature-rich control panel for playing [SpaceTraders](https://spacetra
    ```
 
 4. **Open in browser**
-   Navigate to `http://localhost:3000`
+Navigate to `http://localhost:3000`
+
+## 🌐 Deployment
+
+To publish on GitHub Pages:
+
+1. Run `npm run build` to generate the static site inside the `docs/` folder.
+2. Commit the contents of the `docs/` directory along with your source changes.
+3. In your repository settings, configure GitHub Pages to serve from the `main` branch using the `/docs` folder.
+
+The generated output also includes a `404.html` fallback so client-side routing works correctly when deep-linking to internal pages.
 
 ## 🎮 Getting Started
 
