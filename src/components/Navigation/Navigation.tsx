@@ -1,18 +1,29 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Navigation as NavigationIcon, MapPin, Fuel, Clock, Send } from 'lucide-react';
 import { useShips, useWaypoints, useNavigateShip } from '../../hooks/useSpaceTraders';
 import { calculateDistance, calculateFuelNeeded, calculateTravelTime, formatDuration } from '../../utils/helpers';
+import LoadingState from '../common/LoadingState';
 
 const Navigation = () => {
-  const { data: ships } = useShips();
+  const { data: ships, isLoading: shipsLoading } = useShips();
   const [selectedShip, setSelectedShip] = useState('');
   const [destinationWaypoint, setDestinationWaypoint] = useState('');
   const navigateShip = useNavigateShip();
 
-  const ship = ships?.find((s) => s.symbol === selectedShip);
+  const ship = useMemo(() => ships?.find((s) => s.symbol === selectedShip), [ships, selectedShip]);
   const systemSymbol = ship?.nav.systemSymbol || '';
 
-  const { data: waypointsData } = useWaypoints(systemSymbol);
+  const { data: waypointsData, isLoading: waypointsLoading } = useWaypoints(systemSymbol);
+
+  const waypoints = useMemo(() => waypointsData?.data ?? [], [waypointsData]);
+
+  if (shipsLoading) {
+    return (
+      <div className="p-6">
+        <LoadingState label="Navigation" description="Fetching ship telemetry..." />
+      </div>
+    );
+  }
 
   const handleNavigate = async () => {
     if (!selectedShip || !destinationWaypoint) return;
@@ -29,7 +40,10 @@ const Navigation = () => {
     }
   };
 
-  const destination = waypointsData?.data.find((w) => w.symbol === destinationWaypoint);
+  const destination = useMemo(
+    () => waypoints.find((w) => w.symbol === destinationWaypoint),
+    [destinationWaypoint, waypoints]
+  );
   const distance = ship && destination
     ? calculateDistance(
         ship.nav.route.origin.x,
@@ -101,7 +115,13 @@ const Navigation = () => {
       )}
 
       {/* Destination Selection */}
-      {ship && waypointsData && (
+      {ship && (shipsLoading || waypointsLoading) && (
+        <div className="card">
+          <LoadingState label="Destinations" description="Mapping system waypoints..." />
+        </div>
+      )}
+
+      {ship && !waypointsLoading && waypoints.length > 0 && (
         <div className="card">
           <h2 className="text-lg font-semibold text-white mb-4">Select Destination</h2>
           <select
@@ -110,7 +130,7 @@ const Navigation = () => {
             className="input w-full"
           >
             <option value="">Choose a destination...</option>
-            {waypointsData.data
+            {waypoints
               .filter((w) => w.symbol !== ship.nav.waypointSymbol)
               .map((waypoint) => (
                 <option key={waypoint.symbol} value={waypoint.symbol}>
@@ -121,8 +141,14 @@ const Navigation = () => {
         </div>
       )}
 
+      {ship && !waypointsLoading && waypoints.length === 0 && (
+        <div className="card text-center py-12 text-gray-400">
+          No alternative waypoints detected in this system.
+        </div>
+      )}
+
       {/* Route Information */}
-      {ship && destination && (
+      {ship && !waypointsLoading && destination && (
         <div className="card">
           <h2 className="text-lg font-semibold text-white mb-4">Route Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
