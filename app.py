@@ -701,9 +701,21 @@ with tab_fleet:
         st.markdown("### 🎯 Mission Shortcuts")
         col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
         
-        col1.text_input("Mining Waypoint", key="shortcut_mining")
-        col2.text_input("Delivery Waypoint", key="shortcut_delivery")
-        col3.text_input("Warehouse/Shipyard", key="shortcut_warehouse")
+        col1.text_input(
+            "Mining Waypoint",
+            key="shortcut_mining",
+            help="Enter the waypoint symbol you routinely mine from (e.g. X1-ABC-123)."
+        )
+        col2.text_input(
+            "Delivery Waypoint",
+            key="shortcut_delivery",
+            help="Specify the waypoint symbol used for contract deliveries."
+        )
+        col3.text_input(
+            "Warehouse/Shipyard",
+            key="shortcut_warehouse",
+            help="Provide a waypoint symbol that hosts your warehouse or a shipyard."
+        )
         
         if col4.button("💾 Save", use_container_width=True):
             shortcuts["mining"] = normalize_symbol(st.session_state.get("shortcut_mining", ""))
@@ -722,7 +734,11 @@ with tab_fleet:
             st.markdown("### 🔍 Filters")
             col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 2, 1])
             
-            search_term = col_f1.text_input("Search", placeholder="Ship symbol or location")
+            search_term = col_f1.text_input(
+                "Search",
+                placeholder="Ship symbol or location",
+                help="Filter the fleet list by ship symbol or current waypoint."
+            )
             
             roles_available = sorted({
                 ship.get("registration", {}).get("role", "UNSPEC")
@@ -1121,7 +1137,11 @@ with tab_contracts:
                         col_d1, col_d2, col_d3, col_d4 = st.columns(4)
                         
                         ship_sel = col_d1.selectbox("Ship", ship_opts, key=f"del_ship_{cid}")
-                        trade_sym = col_d2.text_input("Trade Symbol", key=f"del_trade_{cid}")
+                        trade_sym = col_d2.text_input(
+                            "Trade Symbol",
+                            key=f"del_trade_{cid}",
+                            help="Enter the trade good symbol you are delivering."
+                        )
                         qty = col_d3.number_input("Units", min_value=1, value=1, key=f"del_qty_{cid}")
                         
                         if col_d4.button("📦 Deliver", key=f"del_btn_{cid}", use_container_width=True):
@@ -1149,9 +1169,23 @@ with tab_explorer:
         
         col1, col2, col3, col4 = st.columns(4)
         
-        sys_sym = col1.text_input("System Symbol", value=default_system)
-        traits_filter = col2.text_input("Traits Filter (comma-separated)", placeholder="MARKETPLACE,SHIPYARD")
-        page = col3.number_input("Page", min_value=1, value=1, step=1)
+        sys_sym = col1.text_input(
+            "System Symbol",
+            value=default_system,
+            help="Enter the system symbol to explore (e.g. X1-ABC)."
+        )
+        traits_filter = col2.text_input(
+            "Traits Filter (comma-separated)",
+            placeholder="MARKETPLACE,SHIPYARD",
+            help="Optional: provide trait symbols separated by commas to narrow the waypoint list."
+        )
+        page = col3.number_input(
+            "Page",
+            min_value=1,
+            value=1,
+            step=1,
+            help="Adjust if the system has more than 20 waypoints."
+        )
         
         if col4.button("🔍 Load Waypoints", use_container_width=True):
             trait_param = None
@@ -1213,7 +1247,69 @@ with tab_explorer:
             ys = [w.get("y", 0) for w in waypoints]
             labels = [w.get("symbol", "?") for w in waypoints]
             types = [w.get("type", "?") for w in waypoints]
-            
+
+            waypoint_lookup = {
+                normalize_symbol(w.get("symbol")): w
+                for w in waypoints
+                if w.get("symbol") is not None
+            }
+
+            ships_in_system = []
+            for ship in ships:
+                nav = ship.get("nav", {}) or {}
+                if normalize_symbol(nav.get("systemSymbol")) != normalize_symbol(sys_sym):
+                    continue
+
+                status = nav.get("status", "UNKNOWN")
+                waypoint_symbol = normalize_symbol(nav.get("waypointSymbol"))
+                route = nav.get("route") or {}
+                departure = route.get("departure") or route.get("origin") or {}
+                destination = route.get("destination") or {}
+
+                progress = travel_progress(nav)
+                fraction = progress.get("fraction") if isinstance(progress, dict) else None
+
+                pos_x = pos_y = None
+
+                if status == "IN_TRANSIT" and isinstance(departure, dict) and isinstance(destination, dict):
+                    try:
+                        dep_x, dep_y = float(departure.get("x")), float(departure.get("y"))
+                        dest_x, dest_y = float(destination.get("x")), float(destination.get("y"))
+                        if None not in (dep_x, dep_y, dest_x, dest_y) and isinstance(fraction, (float, int)):
+                            frac = max(0.0, min(1.0, float(fraction)))
+                            pos_x = dep_x + (dest_x - dep_x) * frac
+                            pos_y = dep_y + (dest_y - dep_y) * frac
+                    except (TypeError, ValueError):
+                        pos_x = pos_y = None
+
+                if pos_x is None or pos_y is None:
+                    wp_data = waypoint_lookup.get(waypoint_symbol)
+                    if isinstance(wp_data, dict):
+                        try:
+                            pos_x = float(wp_data.get("x"))
+                            pos_y = float(wp_data.get("y"))
+                        except (TypeError, ValueError):
+                            pos_x = pos_y = None
+
+                if pos_x is None or pos_y is None:
+                    continue
+
+                hover_lines = [
+                    f"{ship.get('symbol', '?')} — {status.replace('_', ' ').title()}"
+                ]
+                if waypoint_symbol:
+                    hover_lines.append(f"Waypoint: {waypoint_symbol}")
+                eta_text = progress.get("eta") if isinstance(progress, dict) else None
+                if eta_text and eta_text != "—":
+                    hover_lines.append(f"ETA: {eta_text}")
+
+                ships_in_system.append({
+                    "x": pos_x,
+                    "y": pos_y,
+                    "label": ship.get("symbol", "?"),
+                    "hover": "<br>".join(hover_lines)
+                })
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=xs,
@@ -1222,17 +1318,31 @@ with tab_explorer:
                 text=[f"{l}\n({t})" for l, t in zip(labels, types)],
                 textposition="top center",
                 marker=dict(size=10, opacity=0.7),
-                hovertext=[f"{l} - {t}" for l, t in zip(labels, types)]
+                hovertext=[f"{l} - {t}" for l, t in zip(labels, types)],
+                name="Waypoints"
             ))
-            
+
+            if ships_in_system:
+                fig.add_trace(go.Scatter(
+                    x=[s["x"] for s in ships_in_system],
+                    y=[s["y"] for s in ships_in_system],
+                    mode="markers+text",
+                    text=[s["label"] for s in ships_in_system],
+                    textposition="bottom center",
+                    marker=dict(size=14, color="#d62728", symbol="triangle-up"),
+                    hovertext=[s["hover"] for s in ships_in_system],
+                    name="Ships"
+                ))
+
             fig.update_layout(
                 height=500,
                 title=f"Waypoints in {sys_sym}",
                 xaxis_title="X",
                 yaxis_title="Y",
-                hovermode="closest"
+                hovermode="closest",
+                legend=dict(title="Legend")
             )
-            
+
             st.plotly_chart(fig, use_container_width=True)
             
             # Download
@@ -1255,7 +1365,11 @@ with tab_markets:
     
     col1, col2 = st.columns([3, 1])
     
-    wp = col1.text_input("Market Waypoint Symbol", placeholder="X1-ABC-DEF")
+    wp = col1.text_input(
+        "Market Waypoint Symbol",
+        placeholder="X1-ABC-DEF",
+        help="Enter the waypoint symbol hosting the market you want to analyze."
+    )
     
     if col2.button("📊 Load Market", use_container_width=True) and wp:
         try:
@@ -1370,7 +1484,11 @@ with tab_shipyards:
     # Find shipyards
     col1, col2 = st.columns([3, 1])
     
-    sys_search = col1.text_input("System to Search", value="X1-RV7")
+    sys_search = col1.text_input(
+        "System to Search",
+        value="X1-RV7",
+        help="Enter a system symbol to discover shipyards located there."
+    )
     
     if col2.button("🔍 Find Shipyards", use_container_width=True):
         try:
@@ -1401,7 +1519,10 @@ with tab_shipyards:
     # View specific shipyard
     col_y1, col_y2 = st.columns([3, 1])
     
-    yard_wp = col_y1.text_input("Shipyard Waypoint")
+    yard_wp = col_y1.text_input(
+        "Shipyard Waypoint",
+        help="Provide the waypoint symbol of a specific shipyard to inspect."
+    )
     
     if col_y2.button("📋 View Shipyard", use_container_width=True) and yard_wp:
         try:
@@ -1546,7 +1667,10 @@ with tab_maintenance:
                     col_t1, col_t2, col_t3, col_t4 = st.columns(4)
                     
                     target_ship = col_t1.selectbox("Target Ship", other_ships)
-                    transfer_symbol = col_t2.text_input("Good Symbol")
+                    transfer_symbol = col_t2.text_input(
+                        "Good Symbol",
+                        help="Enter the trade symbol you want to transfer between ships."
+                    )
                     transfer_units = col_t3.number_input("Units", min_value=1, value=1)
                     
                     if col_t4.button("📦 Transfer", use_container_width=True):
